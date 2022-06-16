@@ -1,0 +1,90 @@
+---
+_schema-version: "3.1"
+ID: pg-cap
+version: 1.0.0
+description: "Sample project on postgreSQL"
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npm install --production
+        - cds build --production
+
+modules:
+  - name: pg-beershop-db-deployer-apt
+    type: custom
+    path: gen/db
+    parameters:
+      buildpacks:
+        [
+          https://github.com/cloudfoundry/apt-buildpack#v0.2.10,
+          nodejs_buildpack,
+        ]
+      no-route: true
+      no-start: true
+      disk-quota: 3GB
+      memory: 512MB
+      tasks:
+        - name: deploy-to-postgresql
+          command: ./deploy.sh
+          disk-quota: 3GB
+          memory: 512MB
+    build-parameters:
+      ignore: ["node_modules/"]
+    requires:
+      - name: devtoberfest-database
+
+  - name: pg-beershop-adminer
+    type: application
+    build-parameters:
+      no-source: true
+    parameters:
+      no-route: false
+      no-start: true
+      disk-quota: 256MB
+      memory: 128MB
+      docker:
+        image: dockette/adminer:pgsql
+      instances: 1
+    requires:
+      - name: devtoberfest-database
+
+  - name: pg-cap-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      memory: 256M
+      disk-quota: 1024M
+      enable-ssh: true
+    build-parameters:
+      ignore: ["node_modules/"]
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: pg-cap-uaa
+      - name: devtoberfest-database
+
+resources:
+  - name: pg-cap-uaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: pg-cap-${org}-${space}
+        tenant-mode: dedicated
+
+  - name: devtoberfest-database
+    type: org.cloudfoundry.existing-service
+
+  - name: pg-cap-destination-service
+    parameters:
+      service-plan: lite
+      service: destination
+    type: org.cloudfoundry.managed-service

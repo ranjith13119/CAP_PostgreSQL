@@ -1,0 +1,123 @@
+{
+    "name": "pg-cap",
+    "version": "1.0.0",
+    "description": "A simple CAP project.",
+    "repository": "<Add your repository here>",
+    "license": "UNLICENSED",
+    "private": true,
+    "engines": {
+        "node": "^14"
+    },
+    "dependencies": {
+        "@sap/audit-logging": "^5.5.4",
+        "@sap/cds": "5.9.7",
+        "@sap/cds-odata-v2-adapter-proxy": "^1.8.20",
+        "@sap/xsenv": "^3.3.1",
+        "@sap/xssec": "^3.2.13",
+        "applicationinsights": "^2.3.3",
+        "cds-pg": "0.1.29",
+        "copyfiles": "^2.4.1",
+        "express": "^4.18.1",
+        "passport": "^0.5.3",
+        "pg": "^8.7.3"
+    },
+    "devDependencies": {
+        "@sap/ux-specification": "^1.100.4",
+        "cds-dbm": "^0.0.36",
+        "chai": "^4.3.6",
+        "chai-as-promised": "^7.1.1",
+        "chai-subset": "^1.6.0",
+        "jest": "^28.1.1",
+        "npm-run-all": "^4.1.5"
+    },
+    "scripts": {
+        "start": "cds run",
+        "xsuaa:build": "cds compile srv/ --to xsuaa > xs-security.json",
+        "deploy:pg": "npx cds-dbm deploy --create-db",
+        "deploy:pg:load": "npx cds-dbm deploy --create-db --load-via delta",
+        "deploy:pg:data:delta": "npx cds-dbm load --via delta",
+        "deploy:pg:data:full": "npx cds-dbm load --via full",
+        "build": "cds build --production",
+        "build:cf": "mbt build",
+        "deploy:cf": "cf deploy mta_archives/pg-cap_1.0.0.mtar --retries 0",
+        "undeploy:cf": "cf undeploy pg-cap --delete-service-keys --delete-services --delete-service-brokers"
+    },
+    "eslintConfig": {
+        "extends": "eslint:recommended",
+        "env": {
+            "es2020": true,
+            "node": true,
+            "jest": true,
+            "mocha": true
+        },
+        "globals": {
+            "SELECT": true,
+            "INSERT": true,
+            "UPDATE": true,
+            "DELETE": true,
+            "CREATE": true,
+            "DROP": true,
+            "CDL": true,
+            "CQL": true,
+            "CXL": true,
+            "cds": true
+        },
+        "rules": {
+            "no-console": "off",
+            "require-atomic-updates": "off"
+        }
+    },
+    "cds": {
+        "requires": {
+            "uaa": {
+                "kind": "xsuaa"
+            },
+            "db": {
+                "kind": "database"
+            },
+            "database": {
+                "dialect": "plain",
+                "impl": "cds-pg",
+                "model": [
+                    "srv"
+                ]
+            }
+        },
+        "migrations": {
+            "db": {
+                "schema": {
+                    "default": "public",
+                    "clone": "_cdsdbm_clone",
+                    "reference": "_cdsdbm_ref"
+                },
+                "deploy": {
+                    "tmpFile": "tmp/_autodeploy.json",
+                    "undeployFile": "db/undeploy.json"
+                }
+            }
+        },
+        "build": {
+            "tasks": [
+                {
+                    "for": "node-cf",
+                    "src": "srv",
+                    "options": {
+                        "model": [
+                            "db",
+                            "srv",
+                            "app"
+                        ]
+                    }
+                },
+                {
+                    "use": "cds-dbm/dist/build/postgres-cf",
+                    "for": "postgres-cf",
+                    "src": "db",
+                    "options": {
+                        "deployCmd": "npx cds-dbm deploy --load-via delta --auto-undeploy"
+                    }
+                }
+            ]
+        }
+    }
+}
