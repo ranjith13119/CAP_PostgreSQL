@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: Deploy SAP CAP app with Postgres to ECR
+name: Deploy SAP CAP app with postgres to ECR
 
 # Controls when the workflow will run
 on:
@@ -33,7 +33,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: kyma2
-          IMAGE_TAG: Postgres
+          IMAGE_TAG: 4c7c0513ae0ab109f3e82db92fd4aeba9172ee17
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
