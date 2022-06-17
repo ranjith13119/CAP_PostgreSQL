@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: postgresql-pass
+stringData:
+  password: postgres
+# ---
+# apiVersion: servicecatalog.k8s.io/v1beta1
+# kind: ServiceInstance
+# metadata:
+#   name: beershop-identity
+# spec:
+#   clusterServiceClassExternalName: identity
+#   clusterServicePlanExternalName: application
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: beershop-postgresql
+  labels:
+    app: beershop
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: beershop
+    tier: postgresql
+  clusterIP: None
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-pv-claim
+  labels:
+    app: beershop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beershop-postgresql
+  labels:
+    app: beershop
+spec:
+  selector:
+    matchLabels:
+      app: beershop
+      tier: postgresql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: beershop
+        tier: postgresql
+    spec:
+      containers:
+      - image: postgres:alpine
+        name: postgresql
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-pass
+              key: password
+        ports:
+        - containerPort: 5432
+          name: postgresql
+        volumeMounts:
+        - name: postgresql-persistent-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: postgres
+      volumes:
+      - name: postgresql-persistent-storage
+        persistentVolumeClaim:
+          claimName: postgresql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: beershop
+  labels:
+    app: beershop
+spec:
+  ports:
+    - name: http
+      port: 4004
+  selector:
+    app: beershop
+    tier: frontend
+---
+apiVersion: gateway.kyma-project.io/v1alpha1
+kind: APIRule
+metadata:
+  labels:
+    app: beershop
+  name: beershop
+spec:
+  service:
+    host: beershop
+    name: beershop
+    port: 4004
+  gateway: kyma-gateway.kyma-system.svc.cluster.local
+  rules:
+    - path: /.*
+      methods: ["GET", "PUT", "POST", "HEAD", "PATCH", "DELETE" ]
+      accessStrategies:
+        - handler: noop
+      mutators: []
+---
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: beershop-postgresql-secret
+    type: opaque
+    stringData:
+      VCAP_SERVICES: >
+        {
+          "postgres": [
+            {
+                "name": "postgres",
+                "label": "postgres",
+                "tags": [
+                  "plain",
+                  "relational",
+                  "database"
+                ],
+                "credentials": {
+                  "host": "beershop-postgresql",
+                  "port": "5432",
+                  "database": "beershop",
+                  "user": "postgres",
+                  "password": "postgres"
+                }
+            }
+          ]
+        }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beershop-db-init
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+    spec:
+      initContainers:
+      - name: init-service-beershop-postgresql
+        image: busybox:1.28
+        command: ['sh', '-c', 
+          '
+          until nslookup beershop-postgresql; 
+            do echo waiting for service beershop-postgresql; 
+            sleep 2; 
+          done;
+          sleep 5;
+          ']
+      containers:
+        - name: beershop-db-init
+          image: gregorwolf/pg-beershop-db:latest
+          imagePullPolicy: "Always"
+          command: ['sh', '-c', 
+            "echo $JAVA_HOME && 
+            npm -v && 
+            jq --version && 
+            npx cds-dbm --version &&
+            npx cds-dbm deploy --create-db -l delta -a
+            "]
+          envFrom:
+            - secretRef:
+                name: beershop-postgresql-secret
+      restartPolicy: OnFailure
+
+---
+apiVersion: apps/v1 
+kind: Deployment
+metadata:
+  name: beershop
+  labels:
+    app: beershop
+spec:
+  selector:
+    matchLabels:
+      app: beershop
+      tier: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: beershop
+        tier: frontend
+      annotations:
+        sidecar.istio.io/inject: "true"
+#        traffic.sidecar.istio.io/excludeOutboundPorts: '5432'
+#        traffic.sidecar.istio.io/excludeOutboundIPRanges: 0.0.0.0/0
+    spec:
+      containers:
+      - image: gregorwolf/pg-beershop:latest
+        name: beershop
+        imagePullPolicy: "Always"
+        ports:
+        - containerPort: 4004
+          name: beershop
+        envFrom:
+        - secretRef:
+            name: beershop-postgresql-secret
