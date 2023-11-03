@@ -1,0 +1,67 @@
+_schema-version: "3.1"
+ID: sample-cap-postgresql-nodejs-cap-js-postgres
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npx cds build
+        - npm install --production
+        - npm run build:cf
+        - mkdir -p gen/pg/db
+        - npm run pg:mta:buildstep
+        - cp -r ./db/data gen/pg/db/data
+        - cp package.json gen/pg/package.json
+        - cp package-lock.json gen/pg/package-lock.json
+modules:
+  - name: sample-cap-postgresql-nodejs-cap-js-postgres-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm-ci
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: postgres-uaa
+      - name: postgres-xsuaa
+
+  - name: sample-cap-postgresql-nodejs-cap-js-postgres-postgres-deployer
+    type: nodejs
+    path: gen/pg
+    parameters:
+      no-route: true
+      no-start: true
+      disk-quota: 1GB
+      memory: 256MB
+      tasks:
+        - name: deploy-to-postgresql
+          command: npm start
+          disk-quota: 1GB
+          memory: 256MB
+    build-parameters:
+      before-all:
+        - builder: custom
+          ignore: ["node_modules/"]
+    requires:
+      - name: postgres-uaa
+      - name: postgres-xsuaa
+
+resources:
+  - name: postgres-uaa
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service: postgresql-db
+      service-plan: development
+  - name: postgres-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      path: ./xs-security.json
+      service: xsuaa
+      service-plan: application

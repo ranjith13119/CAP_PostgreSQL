@@ -1,0 +1,44 @@
+{
+  "name": "sample-cap-postgresql-nodejs-cap-js-postgres",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "repository": "<Add your repository here>",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@cap-js/postgres": "^1.3.1",
+    "@sap/cds": "^7",
+    "@sap/xssec": "^3.4.0",
+    "@sap/xsenv": "^4.0.0",
+    "express": "^4",
+    "passport": "^0.6.0"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^1",
+    "@sap/cds-dk": "^7"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "postgres",
+        "impl": "@cap-js/postgres"
+      },
+      "uaa": {
+        "kind": "xsuaa"
+      },
+      "auth": {
+        "[production]": {
+          "strategy": "JWT"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "build:cf": "npm run build:cds && npm run cleanup:ts && npm run build:ts",
+    "build:ts": "tsc",
+    "build:cds": "cds build --production",
+    "cleanup:ts": "npx rimraf gen/srv/**/*.ts",
+    "pg:mta:buildstep": "cds compile './*' > gen/pg/db/csn.json"
+  }
+}
